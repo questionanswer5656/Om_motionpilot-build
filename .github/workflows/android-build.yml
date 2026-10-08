@@ -51,12 +51,15 @@ jobs:
         run: |
           mkdir -p $ANDROID_HOME
           cd $ANDROID_HOME
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           rm -rf cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           mkdir -p cmdline-tools
           unzip -q cmdline-tools.zip -d cmdline-tools
-          mv cmdline-tools/cmdline-tools/* cmdline-tools/
-          rm -rf cmdline-tools.zip
+          cd cmdline-tools
+          mv cmdline-tools/* .
+          rm -rf cmdline-tools
+          rm cmdline-tools.zip
+          ls -la $ANDROID_HOME/cmdline-tools/latest/bin/
           
           # Install required SDK components
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
@@ -73,7 +76,7 @@ jobs:
             sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle"
           fi
           echo "Patched compileSdk to 35"
-          cat "$PROJECT_DIR/app/build.gradle.kts" | grep -i compileSdk || echo "No compileSdk found in build.gradle.kts"
+          grep -i compileSdk "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || echo "No compileSdk found"
 
       - name: Print versions
         run: |
