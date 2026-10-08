@@ -32,8 +32,8 @@ jobs:
 
       - name: Set up Android SDK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y sdkmanager
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          sdkmanager "platform-tools" || true
           sdkmanager "platforms;android-34" || true
           sdkmanager "build-tools;34.0.0" || true
 
