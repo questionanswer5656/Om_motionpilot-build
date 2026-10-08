@@ -49,14 +49,14 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          # Download Android command-line tools
           mkdir -p $ANDROID_HOME
           cd $ANDROID_HOME
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          mkdir -p cmdline-tools/latest
-          unzip -q cmdline-tools.zip -d cmdline-tools/tmp
-          mv cmdline-tools/tmp/cmdline-tools/* cmdline-tools/latest/
-          rm -rf cmdline-tools/tmp cmdline-tools.zip
+          rm -rf cmdline-tools
+          mkdir -p cmdline-tools
+          unzip -q cmdline-tools.zip -d cmdline-tools
+          mv cmdline-tools/cmdline-tools/* cmdline-tools/
+          rm -rf cmdline-tools.zip
           
           # Install required SDK components
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
