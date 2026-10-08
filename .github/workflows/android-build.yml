@@ -17,6 +17,7 @@ jobs:
           rm -rf work
           mkdir work
           unzip -q AndroidMotionGestureApp_v2_CLOUD_BUILD.zip -d work
+          find work -type f | head -30
           PROJECT_DIR=$(find work -maxdepth 3 -type f -name settings.gradle.kts -print -quit | xargs -r dirname)
           if [ -z "$PROJECT_DIR" ]; then
             PROJECT_DIR=$(find work -maxdepth 4 -type f -name build.gradle.kts -print -quit | xargs -r dirname)
@@ -40,6 +41,9 @@ jobs:
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          echo "=== PROJECT_DIR=$PROJECT_DIR ==="
+          ls -la
+          find . -name "gradlew" -type f
           chmod +x gradlew
           ./gradlew :app:assembleRelease --stacktrace
 
