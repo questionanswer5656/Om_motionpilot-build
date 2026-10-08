@@ -39,18 +39,17 @@ jobs:
 
       - name: Set up Android SDK
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-37" "build-tools;35.0.0"
-          yes | sdkmanager --licenses >/dev/null || true
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          sdkmanager --list_installed | grep -E 'platforms;android-37|build-tools;35.0.0|platform-tools' || true
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          gradle --version
+          chmod +x gradlew
+          ./gradlew --version
           java -version
-          gradle :app:assembleRelease --stacktrace --no-daemon
+          ./gradlew :app:assembleRelease --stacktrace --no-daemon
 
       - name: Verify APK
         run: |
