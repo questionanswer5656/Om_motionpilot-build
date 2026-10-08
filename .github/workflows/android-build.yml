@@ -1,0 +1,46 @@
+name: Android APK Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract project
+        run: |
+          rm -rf work
+          mkdir work
+          unzip -q AndroidMotionGestureApp_v2_CLOUD_BUILD.zip -d work
+          PROJECT_DIR=$(find work -maxdepth 3 -type f -name settings.gradle.kts -print -quit | xargs -r dirname)
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR=$(find work -maxdepth 4 -type f -name build.gradle.kts -print -quit | xargs -r dirname)
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build release APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: motionpilot-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/release/*.apk
