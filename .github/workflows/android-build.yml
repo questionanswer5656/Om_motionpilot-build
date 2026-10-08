@@ -25,26 +25,13 @@ jobs:
       - name: Find Android project root
         run: |
           echo "Searching for Android project files..."
-          SETTINGS=$(find work -name "settings.gradle.kts" -o -name "settings.gradle" | head -1)
-          if [ -n "$SETTINGS" ]; then
-            SETTINGS_DIR=$(dirname "$SETTINGS")
-            echo "Found settings.gradle in: $SETTINGS_DIR"
-          else
-            SETTINGS_FILE=$(find work -name "settings.gradle" -o -name "settings.gradle.kts" | head -1)
-            SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
-            echo "Found settings.gradle (groovy) in: $SETTINGS_DIR"
-          fi
-          BUILD_GRADLE=$(find "$SETTINGS_DIR" -name "build.gradle.kts" -o -name "build.gradle" | grep -v "app/" | head -1)
-          if [ -n "$BUILD_GRADLE" ]; then
-            echo "Found project root build file: $BUILD_GRADLE"
-          fi
-          APP_BUILD=$(find "$SETTINGS_DIR" -path "*/app/build.gradle*" | head -1)
-          if [ -n "$APP_BUILD" ]; then
-            echo "Found app build file: $APP_BUILD"
-          fi
+          SETTINGS_FILE=$(find work -name "settings.gradle" -o -name "settings.gradle.kts" | head -1)
+          SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
+          echo "Found settings in: $SETTINGS_DIR"
           echo "PROJECT_DIR=$SETTINGS_DIR" >> "$GITHUB_ENV"
           echo "Project dir: $SETTINGS_DIR"
           ls -la "$SETTINGS_DIR"
+          ls -la "$SETTINGS_DIR/app/" 2>/dev/null || echo "No app subdirectory found"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -62,19 +49,31 @@ jobs:
 
       - name: Setup Android SDK
         run: |
-          sdkmanager --install "platform-tools" "build-tools;35.0.0" "platforms;android-37"
-          yes | sdkmanager --licenses
+          # Download Android command-line tools
+          mkdir -p $ANDROID_HOME
+          cd $ANDROID_HOME
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          mkdir -p cmdline-tools/latest
+          unzip -q cmdline-tools.zip -d cmdline-tools/tmp
+          mv cmdline-tools/tmp/cmdline-tools/* cmdline-tools/latest/
+          rm -rf cmdline-tools/tmp cmdline-tools.zip
+          
+          # Install required SDK components
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "build-tools;35.0.0" "platforms;android-35"
 
-      - name: Patch compileSdk if android-37 unavailable
+      - name: Patch compileSdk to 35
         run: |
-          if ! sdkmanager --list_installed 2>/dev/null | grep -q "platforms;android-37"; then
-            sdkmanager --install "platforms;android-35"
-            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || true
-            sed -i 's/compileSdk(37)/compileSdk(35)/g' "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || true
-            sed -i 's/compileSdk = 37/compileSdk = 35/g' "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || true
-            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle" 2>/dev/null || true
-            echo "Patched compileSdk to 35"
+          if [ -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle.kts"
+            sed -i 's/compileSdk(37)/compileSdk(35)/g' "$PROJECT_DIR/app/build.gradle.kts"
+            sed -i 's/compileSdk = 37/compileSdk = 35/g' "$PROJECT_DIR/app/build.gradle.kts"
           fi
+          if [ -f "$PROJECT_DIR/app/build.gradle" ]; then
+            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle"
+          fi
+          echo "Patched compileSdk to 35"
+          cat "$PROJECT_DIR/app/build.gradle.kts" | grep -i compileSdk || echo "No compileSdk found in build.gradle.kts"
 
       - name: Print versions
         run: |
@@ -83,6 +82,8 @@ jobs:
 
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
           echo "Building from: $PROJECT_DIR"
           gradle :app:assembleRelease --stacktrace --no-daemon
@@ -90,8 +91,8 @@ jobs:
       - name: Verify APK exists
         run: |
           echo "Looking for APKs in: $PROJECT_DIR/app/build/outputs/apk/release/"
-          find "$PROJECT_DIR/app/build/outputs/apk/release/" -name "*.apk" -type f
-          ls -lah "$PROJECT_DIR/app/build/outputs/apk/release/"
+          find "$PROJECT_DIR/app/build/outputs/apk/release/" -name "*.apk" -type f 2>/dev/null
+          ls -lah "$PROJECT_DIR/app/build/outputs/apk/release/" 2>/dev/null || echo "No APK output directory found"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
