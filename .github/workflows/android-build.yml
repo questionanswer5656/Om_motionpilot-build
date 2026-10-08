@@ -8,36 +8,57 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify and extract uploaded source
+      - name: Extract uploaded ZIP
         run: |
-          test -f AndroidMotionGestureApp_v2_CLOUD_BUILD.zip
+          ls -la AndroidMotionGestureApp_v2_CLOUD_BUILD.zip
           rm -rf work
           mkdir work
           unzip -q AndroidMotionGestureApp_v2_CLOUD_BUILD.zip -d work
-          test -f work/AndroidMotionGestureApp/settings.gradle.kts
-          test -f work/AndroidMotionGestureApp/build.gradle.kts
-          test -f work/AndroidMotionGestureApp/app/build.gradle.kts
-          echo "PROJECT_DIR=$GITHUB_WORKSPACE/work/AndroidMotionGestureApp" >> "$GITHUB_ENV"
-          echo "Project root: $GITHUB_WORKSPACE/work/AndroidMotionGestureApp"
-          ls -la "$GITHUB_WORKSPACE/work/AndroidMotionGestureApp"
+          echo "Extracted contents:"
+          find work -type f | head -50
+
+      - name: Find Android project root
+        run: |
+          echo "Searching for Android project files..."
+          SETTINGS=$(find work -name "settings.gradle.kts" -o -name "settings.gradle" | head -1)
+          if [ -n "$SETTINGS" ]; then
+            SETTINGS_DIR=$(dirname "$SETTINGS")
+            echo "Found settings.gradle in: $SETTINGS_DIR"
+          else
+            SETTINGS_FILE=$(find work -name "settings.gradle" -o -name "settings.gradle.kts" | head -1)
+            SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
+            echo "Found settings.gradle (groovy) in: $SETTINGS_DIR"
+          fi
+          BUILD_GRADLE=$(find "$SETTINGS_DIR" -name "build.gradle.kts" -o -name "build.gradle" | grep -v "app/" | head -1)
+          if [ -n "$BUILD_GRADLE" ]; then
+            echo "Found project root build file: $BUILD_GRADLE"
+          fi
+          APP_BUILD=$(find "$SETTINGS_DIR" -path "*/app/build.gradle*" | head -1)
+          if [ -n "$APP_BUILD" ]; then
+            echo "Found app build file: $APP_BUILD"
+          fi
+          echo "PROJECT_DIR=$SETTINGS_DIR" >> "$GITHUB_ENV"
+          echo "Project dir: $SETTINGS_DIR"
+          ls -la "$SETTINGS_DIR"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: 17
 
       - name: Download and setup Gradle 9.6.0
         run: |
           curl -fsSL https://services.gradle.org/distributions/gradle-9.6.0-bin.zip -o /tmp/gradle.zip
           unzip -q /tmp/gradle.zip -d /tmp/
-          export GRADLE=/tmp/gradle-9.6/bin/gradle
-          echo "GRADLE=$GRADLE" >> "$GITHUB_ENV"
-          echo "GRADLE=$GRADLE" >> "$GITHUB_PATH"
+          GRADLE_BIN=/tmp/gradle-9.6/bin/gradle
+          echo "GRADLE=$GRADLE_BIN" >> "$GITHUB_ENV"
+          echo "$GRADLE_BIN" >> "$GITHUB_PATH"
 
       - name: Setup Android SDK
         run: |
@@ -48,24 +69,29 @@ jobs:
         run: |
           if ! sdkmanager --list_installed 2>/dev/null | grep -q "platforms;android-37"; then
             sdkmanager --install "platforms;android-35"
-            sed -i 's/compileSdk 37/compileSdk 35/' "$PROJECT_DIR/app/build.gradle.kts"
-            echo "Patched compileSdk from 37 to 35"
+            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || true
+            sed -i 's/compileSdk(37)/compileSdk(35)/g' "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || true
+            sed -i 's/compileSdk = 37/compileSdk = 35/g' "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || true
+            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle" 2>/dev/null || true
+            echo "Patched compileSdk to 35"
           fi
 
       - name: Print versions
         run: |
           java -version
-          $GRADLE --version
+          gradle --version
 
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          $GRADLE :app:assembleRelease --stacktrace --no-daemon
+          echo "Building from: $PROJECT_DIR"
+          gradle :app:assembleRelease --stacktrace --no-daemon
 
       - name: Verify APK exists
         run: |
+          echo "Looking for APKs in: $PROJECT_DIR/app/build/outputs/apk/release/"
+          find "$PROJECT_DIR/app/build/outputs/apk/release/" -name "*.apk" -type f
           ls -lah "$PROJECT_DIR/app/build/outputs/apk/release/"
-          test -n "$(find "$PROJECT_DIR/app/build/outputs/apk/release" -maxdepth 1 -type f -name '*.apk' -print -quit)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
