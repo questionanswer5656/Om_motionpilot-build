@@ -8,94 +8,52 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract uploaded ZIP
+      - name: Extract project
         run: |
-          ls -la AndroidMotionGestureApp_v2_CLOUD_BUILD.zip
           rm -rf work
           mkdir work
           unzip -q AndroidMotionGestureApp_v2_CLOUD_BUILD.zip -d work
-          echo "Extracted contents:"
-          find work -type f | head -50
-
-      - name: Find Android project root
-        run: |
-          echo "Searching for Android project files..."
-          SETTINGS_FILE=$(find work -name "settings.gradle" -o -name "settings.gradle.kts" | head -1)
-          SETTINGS_DIR=$(dirname "$SETTINGS_FILE")
-          echo "Found settings in: $SETTINGS_DIR"
-          echo "PROJECT_DIR=$SETTINGS_DIR" >> "$GITHUB_ENV"
-          echo "Project dir: $SETTINGS_DIR"
-          ls -la "$SETTINGS_DIR"
-          ls -la "$SETTINGS_DIR/app/" 2>/dev/null || echo "No app subdirectory found"
+          PROJECT_DIR="$(find work -type f -name settings.gradle.kts -print -quit | xargs -r dirname)"
+          test -n "$PROJECT_DIR"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project: $PROJECT_DIR"
+          find "$PROJECT_DIR" -maxdepth 2 -type f | sort
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
 
-      - name: Download and setup Gradle 9.6.0
-        run: |
-          curl -fsSL https://services.gradle.org/distributions/gradle-9.6.0-bin.zip -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /tmp/
-          GRADLE_BIN=/tmp/gradle-9.6/bin/gradle
-          echo "GRADLE=$GRADLE_BIN" >> "$GITHUB_ENV"
-          echo "$GRADLE_BIN" >> "$GITHUB_PATH"
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
 
-      - name: Setup Android SDK
+      - name: Install Android SDK packages
         run: |
-          mkdir -p $ANDROID_HOME
-          cd $ANDROID_HOME
-          rm -rf cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          mkdir -p cmdline-tools
-          unzip -q cmdline-tools.zip -d cmdline-tools
-          cd cmdline-tools
-          mv cmdline-tools/* .
-          rm -rf cmdline-tools
-          rm cmdline-tools.zip
-          ls -la $ANDROID_HOME/cmdline-tools/latest/bin/
-          
-          # Install required SDK components
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platform-tools" "build-tools;35.0.0" "platforms;android-35"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-37" "build-tools;37.0.0"
 
-      - name: Patch compileSdk to 35
+      - name: Install Gradle 9.6
         run: |
-          if [ -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle.kts"
-            sed -i 's/compileSdk(37)/compileSdk(35)/g' "$PROJECT_DIR/app/build.gradle.kts"
-            sed -i 's/compileSdk = 37/compileSdk = 35/g' "$PROJECT_DIR/app/build.gradle.kts"
-          fi
-          if [ -f "$PROJECT_DIR/app/build.gradle" ]; then
-            sed -i 's/compileSdk 37/compileSdk 35/g' "$PROJECT_DIR/app/build.gradle"
-          fi
-          echo "Patched compileSdk to 35"
-          grep -i compileSdk "$PROJECT_DIR/app/build.gradle.kts" 2>/dev/null || echo "No compileSdk found"
-
-      - name: Print versions
-        run: |
-          java -version
+          curl -fsSL https://services.gradle.org/distributions/gradle-9.6-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          echo "/tmp/gradle-9.6/bin" >> "$GITHUB_PATH"
           gradle --version
 
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
-          echo "Building from: $PROJECT_DIR"
           gradle :app:assembleRelease --stacktrace --no-daemon
 
-      - name: Verify APK exists
+      - name: Verify APK
         run: |
-          echo "Looking for APKs in: $PROJECT_DIR/app/build/outputs/apk/release/"
-          find "$PROJECT_DIR/app/build/outputs/apk/release/" -name "*.apk" -type f 2>/dev/null
-          ls -lah "$PROJECT_DIR/app/build/outputs/apk/release/" 2>/dev/null || echo "No APK output directory found"
+          find "$PROJECT_DIR/app/build/outputs/apk/release" -type f -name "*.apk" -ls
+          test -n "$(find "$PROJECT_DIR/app/build/outputs/apk/release" -type f -name "*.apk" -print -quit)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
